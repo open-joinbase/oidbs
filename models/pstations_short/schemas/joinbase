@@ -1,0 +1,8 @@
+drop table if exists benchmark.pstations_short;
+
+create table benchmark.pstations_short
+(
+    sensor_value Float32,
+    ts DateTime
+)
+partition BY ymdhm(ts);

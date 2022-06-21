@@ -1,0 +1,16 @@
+create database if not exists benchmark;
+drop table if exists benchmark.MyCoinMiner;
+
+create table benchmark.MyCoinMiner(
+    id Int64,
+    name String,
+    firmware_version String,
+    location String,
+    pox UInt32,
+    pox_status String,
+    ts DateTime,
+    coins UInt32,
+    cpu_usage UInt8,
+    mem_usage UInt16
+)
+partition BY yyyymmdd(ts);

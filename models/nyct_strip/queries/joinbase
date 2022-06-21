@@ -1,0 +1,6 @@
+get row counts of whole dataset: select count(passenger_count) from nyct_strip
+get total passenger counts: select sum(passenger_count) from nyct_strip
+get stats of main metrics: select avg(passenger_count),avg(total_amount),avg(trip_distance),max(passenger_count),max(total_amount),max(trip_distance),min(passenger_count),min(total_amount),min(trip_distance) from nyct_strip
+get all big-trip passengers by vendor_id and cab_type: select vendor_id,cab_type,avg(passenger_count) from nyct_strip where passenger_count>3 group by vendor_id,cab_type
+group 3 metrics by 3 dimensions: select vendor_id,cab_type,passenger_count,avg(total_amount),avg(trip_distance) from nyct_strip group by vendor_id,cab_type,passenger_count
+What is the daily average total amount for all rides?: SELECT date(pickup_datetime), avg(total_amount) FROM nyct_strip WHERE passenger_count = 1 GROUP BY date(pickup_datetime)

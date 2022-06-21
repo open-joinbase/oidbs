@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS benchmark.nyct_strip;
+
+CREATE TABLE benchmark.nyct_strip(
+    id UInt32,
+    vendor_id String,
+    pickup_datetime DateTime,
+    passenger_count UInt8,
+    trip_distance Float32,
+    total_amount Float32,
+    cab_type String
+)
+PARTITION BY yyyymmdd3(pickup_datetime);

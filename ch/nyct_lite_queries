@@ -1,0 +1,8 @@
+select count(passenger_count) from nyct_lite
+select sum(passenger_count) from nyct_lite
+select sum(total_amount) from nyct_lite
+select payment_type,avg(passenger_count) from nyct_lite group by payment_type
+select vendor_id,payment_type,rate_code,sum(passenger_count) from nyct_lite where passenger_count>3 group by vendor_id,payment_type,rate_code
+select vendor_id,payment_type,rate_code,count(passenger_count),sum(trip_distance),sum(total_amount),sum(tip_amount) from nyct_lite group by vendor_id,payment_type,rate_code
+SELECT rate_code, COUNT(vendor_id) num_trips FROM nyct_lite WHERE pickup_datetime < '2016-02-01 00:00:00' GROUP BY rate_code ORDER BY rate_code
+SELECT toYYYYMMDD(pickup_datetime) AS day, avg(fare_amount) FROM nyct_lite WHERE passenger_count = 1 AND pickup_datetime < '2016-01-08 00:00:00' GROUP BY day ORDER BY day

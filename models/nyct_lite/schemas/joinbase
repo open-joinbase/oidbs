@@ -1,0 +1,23 @@
+DROP TABLE IF EXISTS benchmark.nyct_lite;
+
+CREATE TABLE benchmark.nyct_lite(
+    vendor_id String,
+    pickup_datetime DateTime,
+    dropoff_datetime DateTime,
+    passenger_count Int8,
+    trip_distance Float32,
+    pickup_longitude  Float32,
+    pickup_latitude   Float32,
+    rate_code         Int8,
+    dropoff_longitude Float32,
+    dropoff_latitude  Float32,
+    payment_type Int8,
+    fare_amount Float32,
+    extra Float32,
+    mta_tax Float32,
+    tip_amount Float32,
+    tolls_amount Float32,
+    improvement_surcharge Float32,
+    total_amount Float32
+)
+PARTITION BY ymdh12(pickup_datetime);

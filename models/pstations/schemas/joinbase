@@ -1,0 +1,13 @@
+drop table if exists benchmark.power_stations;
+
+create table benchmark.power_stations
+(
+    station_id UInt16,
+    station_name String,
+    sensor_id UInt8,
+    sensor_name String,
+    sensor_type String,
+    sensor_value Float32,
+    ts DateTime
+)
+partition BY ymdhm(ts);

@@ -1,0 +1,14 @@
+-- DROP EXTENSION IF EXISTS timescaledb;
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+DROP TABLE IF EXISTS "nyct_strip";
+
+CREATE TABLE "nyct_strip"(
+    id integer,
+    vendor_id TEXT,
+    pickup_datetime TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    passenger_count smallint,
+    trip_distance real,
+    total_amount real,
+    cab_type TEXT
+);
+SELECT create_hypertable('nyct_strip', 'pickup_datetime', 'cab_type', 2, create_default_indexes=>FALSE);

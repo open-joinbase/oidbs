@@ -1,0 +1,4 @@
+db,Queries Per Seconds
+JoinBase,34622.92128461751
+ClickHouse,245.23233571554584
+Timescale,422.64208085668804

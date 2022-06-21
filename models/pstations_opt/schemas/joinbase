@@ -1,0 +1,11 @@
+drop table if exists benchmark.pstations_opt;
+
+create table benchmark.pstations_opt
+(
+    station Enum16,
+    sensor Enum8,
+    sensor_type Enum8,
+    sensor_value Float32,
+    ts DateTime
+)
+partition BY ymdhm(ts);
