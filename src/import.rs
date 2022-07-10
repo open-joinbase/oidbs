@@ -249,7 +249,8 @@ impl Importer {
                 }
                 url::Host::Ipv6(_) => todo!(),
             };
-            let con_str = format!("host={} port=5432 user=postgres password=postgres  dbname=benchmark sslmode=disable", ip_addr);
+            let port = self.pg_uri.port().unwrap_or(5432);
+            let con_str = format!("host={} port={} user=postgres password=postgres  dbname=benchmark sslmode=disable", ip_addr, port);
             debug!("con_str: {}", con_str);
             Command::new("timescaledb-parallel-copy")
                 .arg("--connection")
