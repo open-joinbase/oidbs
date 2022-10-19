@@ -1,0 +1,13 @@
+-- DROP EXTENSION IF EXISTS timescaledb;
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+drop table if exists pstations;
+
+create table pstations
+(
+    station_id integer,
+    sensor_id smallint,
+    sensor_kind smallint,
+    sensor_value NUMERIC,
+    ts TIMESTAMP WITHOUT TIME ZONE NOT NULL
+);
+SELECT create_hypertable('pstations', 'ts', 'station_id', 2, create_default_indexes=>FALSE);

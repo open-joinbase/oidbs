@@ -1,0 +1,2 @@
+get row counts of whole dataset: select count(station_id) from pstations
+get total passenger counts: select sum(sensor_value) from pstations

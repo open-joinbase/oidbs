@@ -1,15 +1,17 @@
 use crate::{
     error::{OidbsError, OidbsResult},
-    model::{GenWriter, Model},
+    model::{GenRecords, Model, PStations},
 };
 use chrono::{Duration, NaiveDateTime};
 use clap::Args;
-use csv::WriterBuilder;
+use rand::{rngs::SmallRng, SeedableRng};
+use serde_json::{Map, Value};
 use std::{
-    cmp,
+    collections::HashMap,
     fs::OpenOptions,
     io::{BufWriter, Write},
     path::PathBuf,
+    sync::{Arc, Mutex},
     thread,
 };
 
@@ -19,49 +21,61 @@ pub struct Gen {
     output_dir: String,
 
     /// number of workers to start, different workers will generate different data files
-    #[clap(short, long, default_value_t = 64)]
+    #[clap(short, long, default_value_t = 1)]
     workers: u32,
 
     /// the start timestamp for generated dataset
     #[clap(short, long, default_value_t = String::from("2021-01-01 00:00:01"))]
     timestamp_start: String,
 
-    /// the timestamp step for generated dataset, in seconds
-    #[clap(short, long, default_value_t = 10)]
-    step: u32,
+    /// interval per worker to gen, in seconds
+    #[clap(short, long, default_value_t = 1)]
+    interval_per_worker_sec: u32,
 
-    /// the total messages to generate
-    #[clap(short = 'm', long, default_value_t = 200_000_000)]
-    total_messages: u64,
-
-    /// a multiplier to control the number unique devices identifier
-    #[clap(short = 'i', long, default_value_t = 1)]
-    id_multiplier: i64,
+    /// the timestamp step for all dataset to gen, in seconds
+    #[clap(short, long, default_value_t = 1)]
+    step_sec: u32,
 
     /// format of output, options: csv, json
     #[clap(short = 'f', long, default_value_t = String::from("csv"))]
     format: String,
+
+    /// make output out of order in bool, true if have
+    #[clap(short, long)]
+    out_of_order: bool,
+
+    /// model parameters, in the model specific json string format
+    #[clap(short, long, default_value_t = String::from("{}"))]
+    model_parameters: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Generator {
     pub num_workers: u32,
-    pub msgs_per_worker_per_id: u64,
-    pub total_msgs: u64,
     pub path: String,
-    pub gen_data_start_ts: NaiveDateTime,
-    pub gen_data_interval: u32,
+    pub gen_start_ts: NaiveDateTime,
+    pub gen_interval_per_worker_sec: u32,
+    pub gen_step_sec: u32,
     pub models: Vec<Model>,
-    pub id_multiplier: i64,
     pub format: String,
+    pub out_of_order: bool,
+    pub model_parameters: Map<String, Value>,
 }
 
-pub fn gen_data(mut g: Generator, i: u32) -> OidbsResult<()> {
+pub fn gen_data(
+    mut g: Generator,
+    i: u32,
+    model_paras: Map<String, Value>,
+    gen_stats: Arc<Mutex<HashMap<String, u64>>>,
+) -> OidbsResult<()> {
     log::debug!("worker#{} to start...", i);
-    let start_dt = g.gen_data_start_ts;
-    let idm = g.id_multiplier;
-    let interval_sec = g.gen_data_interval;
+    let sdt = g.gen_start_ts;
+    let interval_per_worker_sec = g.gen_interval_per_worker_sec as i64;
+    let step_sec = g.gen_step_sec as usize;
+    let out_of_order = g.out_of_order;
+    log::debug!("out_of_order: {}", out_of_order);
     let output_dir = PathBuf::from(&g.path);
+    let mut rng: SmallRng = SmallRng::seed_from_u64(666666);
     for model in g.models.iter_mut() {
         if model.has_completed {
             // log::debug!("to gen data for model: {:#?}...", &model);
@@ -72,31 +86,65 @@ pub fn gen_data(mut g: Generator, i: u32) -> OidbsResult<()> {
                 .create_new(true)
                 .write(true)
                 .append(true)
-                .open(gen_file_path.clone())?;
-            let buf1 = BufWriter::with_capacity(128 * 1024, gen_file);
-            let mut wtr = WriterBuilder::new().has_headers(false).from_writer(buf1);
-            //FIXME buf2 is ugly hacking
-            let gen_file = OpenOptions::new()
-                .create_new(false)
-                .write(true)
-                .append(true)
                 .open(gen_file_path)?;
-            let mut buf2 = BufWriter::with_capacity(128 * 1024, gen_file);
-
-            for j in 0..g.msgs_per_worker_per_id {
-                let ts = start_dt + Duration::seconds(interval_sec as i64 * j as i64);
-                for id in (i as i64 * idm)..(i as i64 + 1) * idm {
-                    match g.format.as_str() {
-                        "csv" => {
-                            model.gen(id, ts, GenWriter::Csv(&mut wtr))?;
+            let mut buf = BufWriter::with_capacity(1024 * 1024, gen_file);
+            let model_name = model.name.as_str();
+            let ts0 = sdt + Duration::seconds(interval_per_worker_sec as i64 * i as i64);
+            let mut num_all_lines = 0u64;
+            let mut ooo_buf = Vec::<String>::with_capacity(1024 * 1024);
+            const CT_OOO: u32 = 5;//TODO configurable
+            let mut ooo_ct = CT_OOO - 1;
+            for tsp in (0..interval_per_worker_sec).step_by(step_sec) {
+                let ts = ts0 + Duration::seconds(tsp);
+                match g.format.as_str() {
+                    "csv" => match model_name {
+                        "pstations" => {
+                            let lines = PStations::gen_csv_records(ts, &mut rng, &model_paras)?;
+                            ooo_buf.extend_from_slice(&lines);
+                            num_all_lines += lines.len() as u64;
+                            if ooo_ct == 0 {
+                                if out_of_order {
+                                    fastrand::shuffle(&mut ooo_buf);
+                                }
+                                // buf.write_all(&)?;
+                                for s in &ooo_buf {
+                                    buf.write_all(s.as_bytes()).unwrap();
+                                    buf.write(&[b'\n']);
+                                }
+                                ooo_buf.clear();
+                                ooo_ct = CT_OOO - 1;
+                            } else {
+                                ooo_ct -= 1;
+                            }
                         }
-                        _ => {
-                            model.gen(id, ts, GenWriter::Json(&mut buf2))?;
-                            buf2.write(&[b'\n'])?;
+                        _ => unimplemented!(),
+                    },
+                    "json" => match model_name {
+                        "pstations" => {
+                            PStations::gen_json_records(ts, &mut rng, &model_paras)?;
                         }
+                        _ => unimplemented!(),
+                    },
+                    format_str @ _ => {
+                        unimplemented!("format: {} does not supported", format_str)
                     }
                 }
             }
+            if ooo_buf.len() > 0 {
+                for s in &ooo_buf {
+                    buf.write_all(s.as_bytes()).unwrap();
+                    buf.write(&[b'\n']).unwrap();
+                }
+                ooo_buf.clear();
+            }
+            buf.flush().unwrap();
+
+            gen_stats
+                .lock()
+                .unwrap()
+                .entry(model_name.to_string())
+                .and_modify(|e| *e += num_all_lines)
+                .or_insert(num_all_lines);
         }
     }
 
@@ -107,33 +155,19 @@ pub fn gen_data(mut g: Generator, i: u32) -> OidbsResult<()> {
 impl Generator {
     pub fn new(gen: Gen, models: Vec<Model>) -> Result<Self, OidbsError> {
         let num_workers = gen.workers as u32;
-        let id_multiplier = gen.id_multiplier;
-        let msgs_per_worker_per_id = cmp::max(
-            gen.total_messages / num_workers as u64 / id_multiplier as u64,
-            1,
-        );
-        if msgs_per_worker_per_id * num_workers as u64 * id_multiplier as u64 != gen.total_messages
-        {
-            return Err(OidbsError::InvalidArgs(
-                "For simplicity， the number of total messages should be divisible by workers."
-                    .to_string(),
-            ));
-        }
-
+        let parsed: Value = serde_json::from_str(&gen.model_parameters)?;
+        let model_parameters = parsed.as_object().unwrap().clone();
         Ok(Generator {
             format: gen.format,
             path: gen.output_dir,
-            total_msgs: gen.total_messages,
-            gen_data_start_ts: NaiveDateTime::parse_from_str(
-                &gen.timestamp_start,
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .map_err(|_| OidbsError::InvalidArgs("timestamp_start".into()))?,
-            gen_data_interval: gen.step,
+            gen_start_ts: NaiveDateTime::parse_from_str(&gen.timestamp_start, "%Y-%m-%d %H:%M:%S")
+                .map_err(|_| OidbsError::InvalidArgs("timestamp_start".into()))?,
+            gen_interval_per_worker_sec: gen.interval_per_worker_sec,
             num_workers,
-            msgs_per_worker_per_id,
             models,
-            id_multiplier,
+            gen_step_sec: gen.step_sec,
+            model_parameters,
+            out_of_order: gen.out_of_order,
         })
     }
 
@@ -141,11 +175,14 @@ impl Generator {
         for model in self.models.iter() {
             model.ensure_gen_dir_clean(self.path.as_str())?;
         }
+        let gen_stats = Arc::new(Mutex::new(HashMap::new()));
         thread::scope(|s| {
             for i in 0..self.num_workers {
                 let g = self.clone();
+                let gs = gen_stats.clone();
+                let mp = self.model_parameters.clone();
                 s.spawn(move || {
-                    if let Err(e) = gen_data(g, i) {
+                    if let Err(e) = gen_data(g, i, mp, gs) {
                         panic!("error: {}", e.to_string())
                     }
                 });
@@ -153,6 +190,10 @@ impl Generator {
         });
 
         log::debug!("Generator run done!");
+        let gs = gen_stats.lock().unwrap();
+        for stat in &*gs {
+            println!("model {} gen, total lines: {}", stat.0, stat.1);
+        }
 
         Ok(())
     }
@@ -194,7 +235,7 @@ mod tests {
     // #[test]
     // fn test_generator() -> OidbsResult<()> {
     //     let models = vec![Model {
-    //         name: "m4".into(),
+    //         name: "pstations".into(),
     //         target_infos: hashmap!(("joinbase".to_string()) : Schema { schema: "".into(), table: "".into(), database: "".into() }),
     //         rng: SmallRng::seed_from_u64(123),
     //         has_completed: true,

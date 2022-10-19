@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, time::Instant};
 
 use clap::{Parser, Subcommand};
 use oidbs::{
@@ -42,8 +42,10 @@ fn main() -> OidbsResult<()> {
     match oidbs.command {
         Commands::Gen(gen) => {
             log::trace!("gen: {:#?}", gen);
+            let t = Instant::now();
             let g = Generator::new(gen, models)?;
-            g.run()?
+            g.run()?;
+            println!("total time in gen: {:?}", t.elapsed());
         }
         Commands::Import(import) => {
             log::trace!("import: {:#?}", import);

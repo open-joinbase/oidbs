@@ -33,8 +33,8 @@ pub struct Bench {
     #[clap(short, long, default_value_t = String::from("joinbase"))]
     target_kind: String,
 
-    /// the model name to query, which allows users to query to a specified OIDBS data model. Options included of m4, nyct
-    #[clap(short='n', long, default_value_t = String::from("m4"))]
+    /// the model name to query, which allows users to query to a specified OIDBS data model. Options included of pstations, nyct
+    #[clap(short='n', long, default_value_t = String::from("pstations"))]
     model_name: String,
 
     /// the round times to formally run queries for the final performance measurement
@@ -143,7 +143,7 @@ struct QueryEntry {
     sql: String,
     desc: String,
     result: Option<libpq::Result>,
-    meas_times: Duration,
+    meas_time: Duration,
 }
 
 impl QueryEntry {
@@ -152,7 +152,7 @@ impl QueryEntry {
             sql: sql.into(),
             desc: desc.into(),
             result: None,
-            meas_times: Duration::from_secs(u64::MAX),
+            meas_time: Duration::from_secs(u64::MAX),
         }
     }
 }
@@ -288,7 +288,7 @@ impl QueryRequestor {
                 let time = ts.elapsed();
                 println!("{}: time: {:#?}", qe.desc, time);
                 qe.result = Some(result);
-                qe.meas_times = qe.meas_times.min(time);
+                qe.meas_time = qe.meas_time.min(time);
             }
             thread::sleep(Duration::from_secs(1));
         }
@@ -384,23 +384,26 @@ impl QueryRequestor {
             "No",
             "Query Description",
             // "Query",
-            "Average Query Latency",
+            "Best Query Latency",
         ]);
         table.set_header(header);
-        table.set_table_width(50);
+        table.set_width(50);
 
         let mut ct = 1usize;
+        let mut stime = Duration::default();
         for e in entries {
             let cells = vec![
                 Cell::new(ct),
                 Cell::new(&e.desc),
                 // Cell::new(&e.sql),
-                Cell::new(format!("{:?}", e.meas_times)),
+                Cell::new(format!("{:?}", e.meas_time)),
             ];
             table.add_row(cells);
             ct += 1;
+            stime += e.meas_time;
         }
         println!("{}", table);
+        println!("sum time of all queries(in millis): {}", stime.as_millis());
 
         if self.gen_to_results_csv {
             let is_results_first_created = !Path::new("latency_results.csv").exists();
@@ -412,7 +415,7 @@ impl QueryRequestor {
                 .unwrap();
             let results = entries
                 .iter()
-                .map(|e| e.meas_times.as_micros().to_string())
+                .map(|e| e.meas_time.as_micros().to_string())
                 .collect::<Vec<_>>();
             if is_results_first_created {
                 let header = (1..=results.len())

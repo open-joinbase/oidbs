@@ -42,8 +42,8 @@ pub struct Import {
     #[clap(short, long, default_value_t = String::from("joinbase"))]
     target_kind: String,
 
-    /// the model name to import, which allows users to import to a specified OIDBS data model. Options included of m4, nyct
-    #[clap(short='n', long, default_value_t = String::from("m4"))]
+    /// the model name to import, which allows users to import to a specified OIDBS data model. Options included of pstations, nyct
+    #[clap(short='n', long, default_value_t = String::from("pstations"))]
     model_name: String,
 
     /// to only import data, it is the users's responsibility of to preparing all schemas previously
@@ -53,6 +53,10 @@ pub struct Import {
     /// the number of workers for importing data into TimescaleDB via timescaledb-parallel-copy
     #[clap(short = 'w', long, default_value_t = 1)]
     num_workers_timescale: i32,
+
+    /// the number of rows in one batch for importing data into JoinBase
+    #[clap(short = 'b', long, default_value_t = 1)]
+    num_rows_in_batch: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +97,7 @@ pub struct Importer {
     model: Model,
     import_data_only: bool,
     num_workers_timescale: i32,
+    num_rows_in_batch: i32,
 }
 
 impl Importer {
@@ -132,6 +137,7 @@ impl Importer {
             model,
             import_data_only: import.import_data_only,
             num_workers_timescale: import.num_workers_timescale,
+            num_rows_in_batch: import.num_rows_in_batch,
         })
     }
 
@@ -198,23 +204,23 @@ impl Importer {
                     let file = File::open(file_path).unwrap();
                     let reader = BufReader::new(file);
 
-                    for res_line in reader.lines() {
-                        // println!("{}", line);
-                        let bs = res_line.unwrap().into();
-                        if let Err(e) = client.publish_bytes(topic.clone(), QoS::AtMostOnce, bs) {
-                            error!("publish failed, {}", e);
-                        }
-                    }
-
-                    // let batch = 10;
-                    // let lines = reader.lines();
-                    // use itertools::Itertools;
-                    // for chunk in &lines.chunks(batch) {
-                    //     let text = chunk.into_iter().map(|c| c.unwrap()).join("\n");
-                    //     if let Err(e) = client.publish_bytes(topic, QoS::AtMostOnce, text.into()) {
+                    // for res_line in reader.lines() {
+                    //     // println!("{}", line);
+                    //     let bs = res_line.unwrap().into();
+                    //     if let Err(e) = client.publish_bytes(topic.clone(), QoS::AtMostOnce, bs) {
                     //         error!("publish failed, {}", e);
                     //     }
                     // }
+
+                    let batch = self.num_rows_in_batch as usize;
+                    let lines = reader.lines();
+                    use itertools::Itertools;
+                    for chunk in &lines.chunks(batch) {
+                        let text = chunk.into_iter().map(|c| c.unwrap()).join("\n");
+                        if let Err(e) = client.publish_bytes(topic.clone(), QoS::AtMostOnce, text.into()) {
+                            error!("publish failed, {}", e);
+                        }
+                    }
                 });
             }
         });
@@ -244,13 +250,14 @@ impl Importer {
             // );
             let ip_addr = match self.pg_uri.host().unwrap() {
                 url::Host::Domain(d) => d.to_string(),
-                url::Host::Ipv4(addr) => {
-                    addr.to_string()
-                }
+                url::Host::Ipv4(addr) => addr.to_string(),
                 url::Host::Ipv6(_) => todo!(),
             };
             let port = self.pg_uri.port().unwrap_or(5432);
-            let con_str = format!("host={} port={} user=postgres password=postgres  dbname=benchmark sslmode=disable", ip_addr, port);
+            let con_str = format!(
+                "host={} port={} user=postgres password=postgres  dbname=benchmark sslmode=disable",
+                ip_addr, port
+            );
             debug!("con_str: {}", con_str);
             Command::new("timescaledb-parallel-copy")
                 .arg("--connection")

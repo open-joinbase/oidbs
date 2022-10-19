@@ -1,22 +1,23 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::fmt::format;
 use std::fs::File;
 use std::str::FromStr;
 use std::{fs, path::PathBuf, vec};
 
-use crate::error::{OidbsResult, OidbsError};
+use crate::error::{OidbsError, OidbsResult};
 use chrono::NaiveDateTime;
-use csv::Writer;
+use csv::{Writer, WriterBuilder};
 use rand::prelude::SmallRng;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use serde_derive::Serialize;
+use serde_json::{Map, Value};
 use std::io::BufWriter;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Model {
     pub name: String,
     pub target_infos: HashMap<String, TargetInfo>,
-    pub rng: SmallRng,
     pub has_completed: bool,
 }
 
@@ -73,12 +74,11 @@ pub fn read_from_path(root_models: String) -> Vec<Model> {
             let name = get_base_name(&path);
             // log::debug!("{}, name: {:#?}", path.display(), name);
 
-            const COMPLETED_MODELS: &'static [&'static str] = &["m4"];
+            const COMPLETED_MODELS: &'static [&'static str] = &["pstations"];
             let has_completed = COMPLETED_MODELS.contains(&name.as_str());
             let mut model = Model {
                 name: name.clone(),
                 target_infos: Default::default(),
-                rng: SmallRng::seed_from_u64(123),
                 has_completed,
             };
 
@@ -185,41 +185,130 @@ pub enum GenWriter<'a> {
     Json(&'a mut BufWriter<File>),
 }
 
+/*
+NOTE
+a continuous system available 24h a day, 7 days a week
+millions of inserts per second
+
+default:
+5000 stations
+200 sensor types
+1M sensor points inserts per sec
+
+1hour: 3600*1M = 3.6G
+24h: 24*3.6G=86.4G
+    18*86.4G=1.512T dump
+*/
+
+// station_id UInt32,
+// sensor_id UInt8,
+// sensor_kind UInt8,
+// sensor_value Float32,
+// ts DateTime
 #[derive(Debug, Serialize)]
-struct M4 {
-    id: i64,
-    name: String,
-    firmware_version: String,
-    location: String,
-    pox: u32,
-    pox_status: String,
+pub struct PStations {
+    station_id: u32,
+    sensor_id: u8,
+    sensor_kind: u8,
+    sensor_value: f32,
     ts: NaiveDateTime,
-    coins: u32,
-    cpu_usage: u8,
-    mem_usage: u16,
 }
 
-impl M4 {
-    fn new(id: i64, ts: NaiveDateTime, rng: &mut SmallRng) -> Self {
-        const VERS: &'static [&'static str] =
-            &["1.0", "1.1", "1.2", "1.3", "2.0", "2.1", "3.0", "3.1"];
-        const STATUS: &'static [&'static str] = &["new", "accept", "core"];
-        let pox: u32 = rng.gen_range(0..10_000_000);
-        let coins: u32 = rng.gen_range(0..10_000_000);
-        let cpu_usage: u8 = rng.gen_range(0..101);
-        let mem_usage: u16 = rng.gen_range(500..64_000);
-        Self {
-            id,
-            name: format!("MyCoin Miner {}", id),
-            firmware_version: VERS[id as usize % VERS.len()].to_string(),
-            location: format!("room#{}", id / 128), //FIXME configurable
-            pox,
-            pox_status: STATUS[id as usize % STATUS.len()].to_string(),
-            ts,
-            coins,
-            cpu_usage,
-            mem_usage,
+impl PStations {
+    fn gen_records(
+        ts: NaiveDateTime,
+        rng: &mut SmallRng,
+        model_paras: &Map<String, Value>,
+    ) -> Vec<PStations> {
+        let num_stations = if let Some(v) = model_paras.get("num_stations") {
+            log::trace!("v:{}", v);
+            let ret = v
+                .as_i64()
+                .expect("num_stations should be a postivie integer");
+            assert!(ret > 0);
+            ret as _
+        } else {
+            5_000u32
+        };
+        let num_sensors = if let Some(v) = model_paras.get("num_sensors") {
+            log::trace!("v:{}", v);
+            let ret = v
+                .as_i64()
+                .expect("num_stations should be a postivie integer");
+            assert!(ret > 0);
+            ret as _
+        } else {
+            200u8
+        };
+        let mut rt = Vec::with_capacity(num_stations as usize * num_sensors as usize);
+        for station_id in 0..num_stations {
+            for sensor_id in 0..num_sensors {
+                let sensor_kind = sensor_id % 20;
+                let sensor_value: f32 = rng.gen_range(
+                    10.0 * 2i32.pow(sensor_kind as u32) as f32
+                        ..50.0 * 2i32.pow(sensor_kind as u32) as f32,
+                );
+                rt.push(Self {
+                    station_id,
+                    sensor_id,
+                    sensor_kind,
+                    sensor_value,
+                    ts,
+                })
+            }
         }
+        rt
+    }
+}
+
+type Records = (Vec<u8>, u64);
+
+pub trait GenRecords {
+    fn gen_csv_records(
+        ts: NaiveDateTime,
+        rng: &mut SmallRng,
+        model_paras: &Map<String, Value>,
+    ) -> OidbsResult<Vec<String>>;
+    fn gen_json_records(
+        ts: NaiveDateTime,
+        rng: &mut SmallRng,
+        model_paras: &Map<String, Value>,
+    ) -> OidbsResult<Records>;
+}
+
+impl GenRecords for PStations {
+    fn gen_csv_records(
+        ts: NaiveDateTime,
+        rng: &mut SmallRng,
+        model_paras: &Map<String, Value>,
+    ) -> OidbsResult<Vec<String>> {
+        log::trace!("model_paras: {:?}", model_paras);
+        let pss = PStations::gen_records(ts, rng, model_paras);
+        let rt = pss
+            .iter()
+            .map(|ps| {
+                format!(
+                    "{},{},{},{},{}",
+                    ps.station_id, ps.sensor_id, ps.sensor_kind, ps.sensor_value, ps.ts,
+                )
+            })
+            .collect();
+        Ok(rt)
+    }
+
+    fn gen_json_records(
+        ts: NaiveDateTime,
+        rng: &mut SmallRng,
+        model_paras: &Map<String, Value>,
+    ) -> OidbsResult<Records> {
+        let pss = PStations::gen_records(ts, rng, model_paras);
+        let nlines = pss.len() as u64;
+        let mut wtr = vec![];
+        for ps in pss {
+            serde_json::to_writer(&mut wtr, &ps)?;
+            wtr.push(b'\n');
+        }
+        Ok((wtr, nlines))
     }
 }
 
@@ -227,30 +316,32 @@ impl M4 {
 // The randomness is supplied by the operating system.
 impl Model {
     //TODO it is better to have declarative gen method
-    pub fn gen(
-        &mut self,
-        id: i64,
-        ts: NaiveDateTime,
-        // buffer: &mut impl Write,
-        gen_wrt: GenWriter,
-    ) -> OidbsResult<()> {
-        match gen_wrt {
-            GenWriter::Csv(wtr) => {
-                match self.name.as_str() {
-                    "m4" => wtr.serialize(M4::new(id, ts, &mut self.rng))?,
-                    _ => todo!(),
-                }
-
-                // let bs = wtr.into_inner().unwrap();
-                // println!("bs: {}", String::from_utf8(bs).unwrap());
-                // buffer.write(&bs).unwrap();
-            }
-            GenWriter::Json(wtr) => {
-                serde_json::to_writer(wtr, &M4::new(id, ts, &mut self.rng))?;
-            }
-        }
-        Ok(())
-    }
+    // pub fn gen_csv(&mut self, ts: NaiveDateTime) -> OidbsResult<Vec<u8>> {
+    //     let model_name = self.name.as_str();
+    //     match model_name {
+    //         "pstations" => {
+    //             let pss = PStations::gen_records(ts, &mut self.rng);
+    //             let mut wtr = Writer::from_writer(vec![]);
+    //             match gen_wrt {
+    //                 GenWriter::Csv(wtr) => {
+    //                     for ps in pss {
+    //                         wtr.serialize(ps)?;
+    //                     }
+    //                 }
+    //                 GenWriter::Json(wtr) => {
+    //                     for ps in pss {
+    //                         serde_json::to_writer(wtr, &ps)?;
+    //                     }
+    //                 }
+    //             }
+    //             // let bs = wtr.into_inner().unwrap();
+    //             // println!("bs: {}", String::from_utf8(bs).unwrap());
+    //             // buffer.write(&bs).unwrap();
+    //         }
+    //         _ => unimplemented!("{}", model_name),
+    //     }
+    //     Ok(())
+    // }
 
     pub fn ensure_gen_dir_clean(&self, path: &str) -> OidbsResult<()> {
         let mut output = PathBuf::from(path);
@@ -308,49 +399,63 @@ impl FromStr for TargetKind {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs::OpenOptions, io::BufWriter, path::PathBuf};
+    use std::{
+        fs::OpenOptions,
+        io::{BufWriter, Write},
+        path::PathBuf,
+    };
 
     use chrono::NaiveDateTime;
-    use csv::WriterBuilder;
     use rand::{prelude::SmallRng, SeedableRng};
+    use serde_json::Value;
 
-    use crate::model::GenWriter;
+    use crate::model::{GenRecords, PStations};
 
     use super::{read_from_path, Model};
 
     #[test]
     fn test_read_from_path_and_gen() {
+        let mut rng: SmallRng = SmallRng::seed_from_u64(666666);
         let mut root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         root.push("models");
         let models = read_from_path(root.display().to_string());
-        println!("{:#?}", models);
+        // println!("{:#?}", models);
 
-        for mut m in models {
-            if m.name == "m4" {
+        let output_path = "/tmp/test";
+        for m in models {
+            if m.name == "pstations" {
+                println!("to gen for {:?}", m);
                 let f = OpenOptions::new()
                     .read(true)
                     .write(true)
                     .create(true)
-                    .open("/tmp/test")
+                    .open(output_path)
                     .unwrap();
-                let buf = BufWriter::with_capacity(128 * 1024, f);
-                let mut wtr = WriterBuilder::new().has_headers(false).from_writer(buf);
+                // let buf = BufWriter::with_capacity(128 * 1024, f);F
+                // let mut wtr = WriterBuilder::new().has_headers(false).from_writer(buf);
+                let mut buf = BufWriter::with_capacity(128 * 1024, f);
                 let ts = NaiveDateTime::parse_from_str("2022-02-02 11:11:11", "%Y-%m-%d %H:%M:%S")
                     .unwrap();
-                m.gen(123, ts, GenWriter::Csv(&mut wtr)).unwrap();
+                let parsed: Value = serde_json::from_str("{}").unwrap();
+                let model_paras = parsed.as_object().unwrap().clone();
+                let rs = PStations::gen_csv_records(ts, &mut rng, &model_paras).unwrap();
+                for s in rs {
+                    buf.write_all(s.as_bytes()).unwrap();
+                    buf.write(&[b'\n']);
+                }
             }
         }
     }
 
     #[test]
     fn test_gen_2() {
+        let mut rng: SmallRng = SmallRng::seed_from_u64(666666);
         // let mut root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         // root.push("models");
         // let models = read_from_path(root.display().to_string());
-        let mut m = Model {
-            name: "m4".into(),
+        let m = Model {
+            name: "pstations".into(),
             target_infos: Default::default(),
-            rng: SmallRng::seed_from_u64(123),
             has_completed: Default::default(),
         };
         let f = OpenOptions::new()
@@ -361,8 +466,10 @@ mod tests {
             .unwrap();
         let mut buf = BufWriter::with_capacity(128 * 1024, f);
         let ts = NaiveDateTime::parse_from_str("2022-02-02 11:11:11", "%Y-%m-%d %H:%M:%S").unwrap();
-        m.gen(123, ts, GenWriter::Json(&mut buf)).unwrap();
-        m.gen(456, ts, GenWriter::Json(&mut buf)).unwrap();
+        let parsed: Value = serde_json::from_str("{}").unwrap();
+        let model_paras = parsed.as_object().unwrap().clone();
+        let (bs, _nlines) = PStations::gen_json_records(ts, &mut rng, &model_paras).unwrap();
+        buf.write_all(&bs).unwrap();
     }
 
     #[test]

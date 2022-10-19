@@ -1,4 +1,3 @@
-#![feature(scoped_threads)]
 pub mod error;
 pub mod gen;
 pub mod import;
