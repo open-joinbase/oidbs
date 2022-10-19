@@ -35,7 +35,8 @@ jobs:
       run: echo "POSTFIX=$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV  
     - name: Pack OIDBS files
       run: |
-        zip -j oidbs_x64_${{ env.POSTFIX }}.zip ./target/release/oidbs models/*
+        zip -j oidbs_x64_${{ env.POSTFIX }}.zip ./target/release/oidbs LICENSE
+        zip -r oidbs_x64_${{ env.POSTFIX }}.zip models
     - name: Create OIDBS Release
       uses: svenstaro/upload-release-action@v2
       with:
