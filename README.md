@@ -9,7 +9,7 @@ The open-source benchmark suite is a great tool for evaluating the performance o
 
 ## Benchmark Result
 
-One up-to-date benchmark result could be seen in [the website](https://joinbase.io/benchmark/). We encourage you to reproduce the benchmark by yourself. Any feedback or suggestion is welcome.
+The official up-to-date benchmark result could be seen in [the website](https://joinbase.io/benchmark/). We encourage you to reproduce the benchmark by yourself. Any feedback or suggestion is welcome.
 
 ## Principles
 
