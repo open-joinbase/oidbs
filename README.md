@@ -7,6 +7,10 @@ Since there is no suitable benchmark program to bench the new end-to-end IoT dat
 
 The open-source benchmark suite is a great tool for evaluating the performance of the IoT domain data systems.
 
+## Benchmark Result
+
+One up-to-date benchmark result could be seen in [the website](https://joinbase.io/benchmark/). We encourage you to reproduce the benchmark by yourself. Any feedback or suggestion is welcome.
+
 ## Principles
 
 There are common pitfalls in existed benchmarks, like:
