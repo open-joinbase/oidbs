@@ -387,7 +387,7 @@ impl QueryRequestor {
             "Average Query Latency",
         ]);
         table.set_header(header);
-        table.set_table_width(50);
+        table.set_width(50);
 
         let mut ct = 1usize;
         for e in entries {
