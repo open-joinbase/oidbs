@@ -7,6 +7,16 @@ Since there is no suitable benchmark program to bench the new end-to-end IoT dat
 
 The open-source benchmark suite is a great tool for evaluating the performance of the IoT domain data systems.
 
+## Quick Start
+
+* Reading
+
+[OIDBS: An Open Source MQTT Driven Benchmark Suite for Massive IoT Data](https://joinbase.io/blog/intro-oidbs/)
+
+* Video
+
+[![OIDBS Demo](https://img.youtube.com/vi/Y3ETIbGcZ6I/hqdefault.jpg)](https://www.youtube.com/watch?v=Y3ETIbGcZ6I)
+
 ## Benchmark Result
 
 The official up-to-date benchmark result could be seen in [the website](https://joinbase.io/benchmark/). We encourage you to reproduce the benchmark by yourself. Any feedback or suggestion is welcome.
@@ -41,18 +51,9 @@ In the new benchmark suite, we set the following principles:
 
     As our testing, our preemptive bench client can provide 3x more higher peak throughput than that of the goroutine based bench codes with enough parallelisms. 
 
-## Architecture
+## Implementation
 
-![OIDBS Architecture](docs/arch.jpg?raw=true "OIDBS Architecture")
-
-### Benchmark Model
-
-The core of OIDBS is the benchmark model, which is used for grouping different benchmark dataset and its corresponding data-gens, schemas, queries.
-
-More about current two workable models could [be seen here](https://joinbase.io/benchmark/#benchmark-model).
-
-### Composable Commands
-
+Read the reading [OIDBS: An Open Source MQTT Driven Benchmark Suite for Massive IoT Data](https://joinbase.io/blog/intro-oidbs/).
 
 ## Quick Start
 
@@ -105,3 +106,4 @@ To run all benchmark queries against the target servers.
 ```bash
 $ oidbs bench -n nyct_strip
 ```
+
