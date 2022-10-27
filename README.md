@@ -11,7 +11,9 @@ The open-source benchmark suite is a great tool for evaluating the performance o
 
 * Reading
 
-[OIDBS: An Open Source MQTT Driven Benchmark Suite for Massive IoT Data](https://joinbase.io/blog/intro-oidbs/)
+    + [OIDBS: An Open Source MQTT Driven Benchmark Suite for Massive IoT Data](https://joinbase.io/blog/intro-oidbs/)
+    + [Pstations: TPCx-IoT Inspired IoT Data Benchmark Model for OIDBS](https://joinbase.io/blog/pstations/)
+
 
 * Video
 
