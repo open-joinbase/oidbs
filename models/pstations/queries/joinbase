@@ -1,2 +1,8 @@
 get row counts of whole dataset: select count(station_id) from pstations
 get total passenger counts: select sum(sensor_value) from pstations
+main stats: select count(sensor_value),avg(sensor_value),max(sensor_value),min(sensor_value),count(sensor_id),avg(sensor_id),max(sensor_id),min(sensor_id),count(station_id),avg(station_id),max(station_id),min(station_id) from pstations
+sensor value stats grouped by station_id: select station_id,count(sensor_value),avg(sensor_value) from pstations group by station_id
+sensor value stats grouped by all ids with filtering: select station_id,sensor_id,min(sensor_value),max(sensor_value),count(sensor_value),avg(sensor_value) from pstations where sensor_value>2048 group by station_id,sensor_id order by station_id,sensor_id
+sensor value stats grouped by date: select date(ts) as day,count(sensor_value),avg(sensor_value) from pstations group by day order by date(ts)
+sensor value stats grouped by date with filtering: select date(ts) as day,count(sensor_value),avg(sensor_value) from pstations where sensor_kind=1 and sensor_value>64 group by day order by date(ts);
+sensor value stats grouped by date and sensor_kind: select date(ts) as day,sensor_kind,count(sensor_value),avg(sensor_value) from pstations group by day,sensor_kind order by date(ts),sensor_kind
